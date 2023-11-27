@@ -1,0 +1,3 @@
+[submodule "extern/bergamot-translator"]
+	path = extern/bergamot-translator
+	url = ../../Gegy/bergamot-translator.git
