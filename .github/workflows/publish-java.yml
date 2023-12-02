@@ -1,0 +1,123 @@
+name: Publish Java Bindings
+
+on:
+  release:
+    types:
+      - published
+
+env:
+  # The action already fetches git submodules recursively - we don't need CMake to check that
+  GIT_SUBMODULE: OFF
+
+jobs:
+  windows-natives:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ x64, arm64 ]
+        include:
+          - arch: x64
+            msvc_arch: amd64
+          - arch: arm64
+            msvc_arch: amd64_arm64
+
+    name: Windows Natives (${{ matrix.arch }})
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build
+        uses: ./.github/workflows/common/java-natives/windows
+        with:
+          arch: ${{ matrix.arch }}
+          msvc_arch: ${{ matrix.msvc_arch }}
+
+  linux-natives:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ x64, arm64 ]
+        include:
+          - arch: x64
+            triplet: ''
+          - arch: arm64
+            triplet: arm-linux-gnueabihf
+
+    name: Linux Natives (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build
+        uses: ./.github/workflows/common/java-natives/linux
+        with:
+          arch: ${{ matrix.arch }}
+          triplet: ${{ matrix.triplet }}
+
+  macos-natives:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ x64 ]
+        include:
+          - arch: x64
+            cmake_osx_arch: x86_64
+
+    name: MacOS Natives (${{ matrix.arch }})
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build
+        uses: ./.github/workflows/common/java-natives/macos
+        with:
+          arch: ${{ matrix.arch }}
+          cmake_osx_arch: ${{ matrix.cmake_osx_arch }}
+
+  publish:
+    name: Publish
+    needs: [windows-natives, linux-natives, macos-natives]
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download natives
+        uses: actions/download-artifact@v2
+        with:
+          name: natives
+          path: bindings/java/bin/
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+
+      - name: Execute Gradle build and publish
+        working-directory: bindings/java
+        env:
+          MAVEN_URL: ${{ secrets.MAVEN_URL }}
+          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+          FULL_PUBLISH: true
+        run: ./gradlew clean :build publish
+
+      - name: Upload artifacts to release
+        uses: AButler/upload-release-assets@v3.0
+        with:
+          files: |
+            bindings/java/build/libs/
+            bindings/java/bin/
+          repo-token: ${{ secrets.GITHUB_TOKEN }}

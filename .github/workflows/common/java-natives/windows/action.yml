@@ -1,0 +1,42 @@
+name: Build Java Natives (Windows)
+inputs:
+  build_type:
+    required: true
+    default: Release
+  arch:
+    required: true
+    default: x64
+  msvc_arch:
+    required: true
+    default: amd64
+
+runs:
+  using: composite
+  steps:
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: ${{ inputs.msvc_arch }}
+
+    - name: Setup Gradle
+      uses: gradle/gradle-build-action@v2
+
+    - name: Native build cache
+      uses: actions/cache@v2
+      with:
+        path: bindings/java/native/build/cmake
+        key: native-build-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('**/CMakeLists.txt') }}
+
+    - name: Execute Gradle build
+      working-directory: bindings/java
+      env:
+        BUILD_TYPE: ${{ inputs.build_type }}
+        BUILD_ARCH: ${{ inputs.arch }}
+      run: ./gradlew :native:build
+      shell: powershell
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: natives
+        path: bindings/java/native/build/libs/

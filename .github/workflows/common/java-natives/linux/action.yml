@@ -1,0 +1,45 @@
+name: Build Java Natives (Linux)
+inputs:
+  build_type:
+    required: true
+    default: Release
+  arch:
+    required: true
+    default: x64
+  triplet:
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Configure cross toolchain
+      if: inputs.triplet != ''
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y gcc-${{ inputs.triplet }} g++-${{ inputs.triplet }}
+        echo "CMAKE_C_COMPILER=${{ inputs.triplet }}-gcc" >> $GITHUB_ENV
+        echo "CMAKE_CXX_COMPILER=${{ inputs.triplet }}-g++" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Setup Gradle
+      uses: gradle/gradle-build-action@v2
+
+    - name: Native build cache
+      uses: actions/cache@v2
+      with:
+        path: bindings/java/native/build/cmake
+        key: native-build-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('**/CMakeLists.txt') }}
+
+    - name: Execute Gradle build
+      working-directory: bindings/java
+      env:
+        BUILD_TYPE: ${{ inputs.build_type }}
+        BUILD_ARCH: ${{ inputs.arch }}
+      run: ./gradlew :native:build
+      shell: bash
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: natives
+        path: bindings/java/native/build/libs/
