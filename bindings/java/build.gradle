@@ -2,6 +2,7 @@ import org.lovetropics.translatador.NativeBuildPlatform
 
 plugins {
     id 'java-library'
+    id 'maven-publish'
 }
 
 allprojects {
@@ -18,4 +19,46 @@ java {
 
     withJavadocJar()
     withSourcesJar()
+}
+
+final def env = System.getenv()
+
+File nativeArtifact(final String classifier) {
+    return new File("bin/${base.archivesName.get()}-$version-native-${classifier}.jar")
+}
+
+evaluationDependsOnChildren()
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            if (env.FULL_PUBLISH) {
+                NativeBuildPlatform.values().each { final platform ->
+                    final def nativeFile = nativeArtifact(platform.classifier)
+                    if (nativeFile.exists()) {
+                        artifact(nativeFile) {
+                            classifier = "native-$platform.classifier"
+                        }
+                    }
+                }
+            } else {
+                artifact project(':native').tasks.named("jar")
+            }
+        }
+    }
+
+    repositories {
+        if (env.MAVEN_URL) {
+            maven {
+                credentials {
+                    username env.MAVEN_USERNAME
+                    password env.MAVEN_PASSWORD
+                }
+                url env.MAVEN_URL
+            }
+        } else {
+            mavenLocal()
+        }
+    }
 }
