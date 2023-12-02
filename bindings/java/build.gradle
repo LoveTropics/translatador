@@ -1,0 +1,21 @@
+import org.lovetropics.translatador.NativeBuildPlatform
+
+plugins {
+    id 'java-library'
+}
+
+allprojects {
+    group = 'org.lovetropics'
+    version = library_version
+}
+
+base {
+    archivesName = 'translatador'
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+    withJavadocJar()
+    withSourcesJar()
+}

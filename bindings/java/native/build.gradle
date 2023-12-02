@@ -1,0 +1,46 @@
+import org.lovetropics.translatador.NativeBuildPlatform
+
+plugins {
+    id 'java'
+}
+
+final def env = System.getenv()
+
+final def target = 'translatador-java'
+final def buildArch = env.BUILD_ARCH ?: System.getProperty("os.arch")
+final def buildType = env.BUILD_TYPE ?: "Release"
+
+final def platform = NativeBuildPlatform.detect(buildArch)
+
+final def rootLibDir = rootDir.toPath().getParent().getParent()
+final def cmakeBuildDir = new File(buildDir, 'cmake')
+cmakeBuildDir.mkdirs()
+
+tasks.register('configureNativeBuild', Exec) {
+    workingDir cmakeBuildDir
+    inputs.file 'CMakeLists.txt'
+    outputs.dir cmakeBuildDir
+
+    commandLine 'cmake', rootLibDir, "-DCMAKE_BUILD_TYPE=$buildType"
+}
+
+tasks.register('buildNatives', Exec) {
+    dependsOn 'configureNativeBuild'
+    workingDir cmakeBuildDir
+
+    inputs.files configureNativeBuild.outputs.files
+    inputs.dir 'src'
+    outputs.dir new File(cmakeBuildDir, "bindings/java/native/lib/")
+
+    commandLine 'cmake', '--build', '.', '--config', buildType, '-j3', '--target', target
+}
+
+tasks.withType(Jar).configureEach {
+    dependsOn 'buildNatives'
+    archiveBaseName = 'translatador'
+    archiveClassifier = "native-${platform.classifier}"
+
+    from buildNatives.outputs
+    include '*.dll', '*.dylib', '*.so'
+    rename "(.+)\\.(.+)", "\$1-${platform.classifier}\\.\$2"
+}
