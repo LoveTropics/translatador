@@ -1,0 +1,15 @@
+plugins {
+    id 'application'
+}
+
+base {
+    archivesName = 'translatador-example'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+application.mainClass = 'org.lovetropics.translatador.TranslatadorExample'
+
+dependencies {
+    implementation project(':')
+    runtimeOnly project(':native')
+}
