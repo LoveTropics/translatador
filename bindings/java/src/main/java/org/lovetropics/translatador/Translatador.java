@@ -28,6 +28,14 @@ public class Translatador {
     }
 
     /**
+     * @return a new {@link LanguageDetector}
+     */
+    public static LanguageDetector createLanguageDetector() {
+        TranslatadorNative.checkLoaded();
+        return new NativeLanguageDetector();
+    }
+
+    /**
      * Detects whether the current operating system and architecture is supported by Translatador.
      *
      * @return {@code true} if the current platform is supported by Translatador
@@ -253,6 +261,16 @@ public class Translatador {
                 }
                 return pointer;
             }
+        }
+    }
+
+    private static class NativeLanguageDetector implements LanguageDetector {
+        @Override
+        public Result detect(final String string) {
+            final long result = TranslatadorNative.detectLanguage(string);
+            final DetectedLanguage language = DetectedLanguage.byId((int) (result & 0xff));
+            final float confidence = Float.intBitsToFloat((int) (result >> 8 & 0xffffffffL));
+            return new Result(language, confidence);
         }
     }
 }

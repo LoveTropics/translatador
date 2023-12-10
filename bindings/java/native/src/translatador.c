@@ -138,3 +138,17 @@ JNIEXPORT jlong JNICALL Java_org_lovetropics_translatador_TranslatadorNative_tra
     destroy_batch(source);
     return result;
 }
+
+JNIEXPORT jlong JNICALL Java_org_lovetropics_translatador_TranslatadorNative_detectLanguage(JNIEnv* env, jclass class, const jstring string) {
+    const char* c_string = (*env)->GetStringUTFChars(env, string, 0);
+    TrlDetectedLangInfo info;
+    const TrlError error = trl_detect_language(c_string, &info);
+    (*env)->ReleaseStringUTFChars(env, string, c_string);
+    if (error) {
+        throw_error(env, "org/lovetropics/translatador/TranslationException");
+        return 0;
+    }
+    const jbyte lang = info.lang & 0xff;
+    const jint confidence = *(jint *)&info.confidence;
+    return lang | (jlong)confidence << 8;
+}

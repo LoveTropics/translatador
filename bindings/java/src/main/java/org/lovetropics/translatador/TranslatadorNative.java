@@ -11,6 +11,10 @@ class TranslatadorNative {
         Loader.load("translatador-java");
     }
 
+    public static void checkLoaded() {
+        // No-op, just force static initializer
+    }
+
     public static native long createModel(String yamlConfig, byte[] model, byte[] sourceVocab, byte[] targetVocab, byte[] shortList) throws ModelException;
 
     public static native long cloneModel(long model);
@@ -24,6 +28,8 @@ class TranslatadorNative {
     public static native long translate(long model, long batch) throws TranslationException;
 
     public static native long translatePlain(long model, String[] batch) throws TranslationException;
+
+    public static native long detectLanguage(String string) throws TranslationException;
 
     private static class Loader {
         private static final Path UNPACK_ROOT = prepareUnpackRoot();
