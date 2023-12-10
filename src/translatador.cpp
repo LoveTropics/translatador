@@ -9,6 +9,7 @@
 #include <translator/logging.h>
 #include <translator/text_processor.h>
 #include <variant>
+#include <whatlang.h>
 
 namespace bergamot = marian::bergamot;
 
@@ -383,4 +384,20 @@ TrlError trl_translate(const TrlModel* model, const TrlString* const* source, co
             target[i] = new TrlString{std::move(builder[i])};
         }
     });
+}
+
+TrlError trl_detect_language(const char* string, TrlDetectedLangInfo* result) {
+    WlInfo info;
+    switch (wl_detect(string, &info)) {
+        case WL_MALFORMED_STRING:
+            last_error = std::string("Malformed string");
+            return TRL_ERROR;
+        case WL_DETECTION_FAILED:
+            last_error = std::string("Internal language detection error");
+            return TRL_ERROR;
+        default:
+            result->lang = static_cast<TrlDetectedLang>(info.lang);
+            result->confidence = info.confidence;
+            return TRL_OK;
+    }
 }

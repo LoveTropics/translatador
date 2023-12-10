@@ -1,5 +1,5 @@
 # Translatador (Java Bindings)
-This project wraps around the native Translatador API in order to expose translation to Java. 
+This project wraps around the native Translatador API in order to expose translation and language detection to Java.
 
 ## Usage
 Translatador can be easily included in your project with Gradle:
@@ -41,3 +41,9 @@ try (TranslationModel model = Translatador.builder().model(modelPath).vocab(voca
 ```
 
 You can find pre-built open-source models optimized for the CPU in the [firefox-translation-models](https://github.com/mozilla/firefox-translations-models) repository.
+
+Built on [whatlang-rs](https://github.com/greyblake/whatlang-rs), Translatador can detect [69 different languages](https://github.com/greyblake/whatlang-rs/blob/master/SUPPORTED_LANGUAGES.md):
+```java
+LanguageDetector detector = Translatador.createLanguageDetector();
+System.out.println(detector.detect("This is a test string!"));
+```

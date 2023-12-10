@@ -1,8 +1,9 @@
 # Translatador
 Translatador is a minimal C wrapper around [Bergamot Translator](https://github.com/browsermt/bergamot-translator),
 providing lightweight offline translation of text on the CPU.
+It additionally supports detection of 67 languages by providing bindings to [whatlang-rs](https://github.com/greyblake/whatlang-rs).
 
-Translatador additionally provides Java bindings, which you can find more about [here](bindings/java/README.md).
+Translatador provides Java bindings, which you can find more about [here](bindings/java/README.md).
 
 ## Usage
 This repository includes a simple [example project](examples) to help you to get started with Translatador.
