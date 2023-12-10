@@ -26,13 +26,14 @@ set(USE_WASM_COMPATIBLE_SOURCE ON)
 # Ensure that the project can be embedded in a shared library (e.g. for bindings)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-add_subdirectory(extern/bergamot-translator)
+add_subdirectory(extern)
 
 set_target_properties(bergamot-translator PROPERTIES GIT_SUBMODULE OFF)
 
 add_library(translatador STATIC "src/translatador.cpp")
 target_include_directories(translatador PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_link_libraries(translatador PRIVATE bergamot-translator)
+target_link_libraries(translatador PRIVATE whatlang)
 
 add_subdirectory(bindings)
 add_subdirectory(examples)
