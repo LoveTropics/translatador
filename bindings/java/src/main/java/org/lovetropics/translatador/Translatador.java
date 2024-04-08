@@ -185,9 +185,9 @@ public class Translatador {
         public synchronized TranslationBatch translateBatch(final TranslationBatch batch) {
             final long pointer = checkOpen();
             if (batch instanceof final NativeBatch nativeBatch) {
-                final long batchPointer = nativeBatch.checkOpen();
                 final long stamp = nativeBatch.lock.readLock();
                 try {
+                    final long batchPointer = nativeBatch.checkOpen();
                     return new NativeBatch(TranslatadorNative.translate(pointer, batchPointer));
                 } finally {
                     nativeBatch.lock.unlockRead(stamp);
