@@ -10,6 +10,9 @@
 #include <translator/text_processor.h>
 #include <variant>
 #include <whatlang.h>
+#ifdef __unix__
+#include <csignal>
+#endif
 
 namespace bergamot = marian::bergamot;
 
@@ -21,10 +24,22 @@ static thread_local std::string last_error;
 static void initialize() {
     std::lock_guard guard(init_mutex);
     if (!initialized) {
+#ifdef __unix__
+        // Capture and restore signal handlers that are otherwise overidden by Marian
+        // This is particularly important when running inside of the JVM, which uses these handlers in normal operation
+        struct sigaction sigsegv = {};
+        struct sigaction sigfpe = {};
+        sigaction(SIGSEGV, nullptr, &sigsegv);
+        sigaction(SIGFPE, nullptr, &sigfpe);
+#endif
         marian::setThrowExceptionOnAbort(true);
         for (const Logger& logger : createLoggers()) {
             logger->set_level(spdlog::level::level_enum::off);
         }
+#ifdef __unix__
+        sigaction(SIGSEGV, &sigsegv, nullptr);
+        sigaction(SIGFPE, &sigfpe, nullptr);
+#endif
         initialized = true;
     }
 }
