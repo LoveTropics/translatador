@@ -9,9 +9,12 @@ struct Batch {
 
 void throw_error(JNIEnv* env, const char* exception_type) {
     char* last_error = trl_get_last_error();
+    const jclass exception_class = (*env)->FindClass(env, exception_type);
     if (last_error) {
-        (*env)->ThrowNew(env, (*env)->FindClass(env, exception_type), last_error);
+        (*env)->ThrowNew(env, exception_class, last_error);
         free(last_error);
+    } else {
+        (*env)->ThrowNew(env, exception_class, "Unknown failure");
     }
 }
 
