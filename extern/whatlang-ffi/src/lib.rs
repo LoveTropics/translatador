@@ -1,6 +1,5 @@
 use std::ffi::CStr;
 use libc::c_char;
-use whatlang::Lang;
 
 #[repr(C)]
 pub struct WlInfo {
