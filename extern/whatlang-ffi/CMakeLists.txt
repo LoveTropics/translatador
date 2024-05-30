@@ -8,3 +8,7 @@ FetchContent_MakeAvailable(Corrosion)
 
 corrosion_import_crate(MANIFEST_PATH Cargo.toml CRATE_TYPES staticlib)
 target_include_directories(whatlang INTERFACE include)
+
+if (WIN32)
+    target_link_libraries(whatlang INTERFACE bcrypt)
+endif ()
