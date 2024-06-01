@@ -69,7 +69,7 @@ class TranslatadorNative {
 
         private static Path unpackLibrary(final Path root, final String libraryName, final Platform platform) {
             final String libraryPath = platform.getLibraryPath(libraryName);
-            try (final InputStream input = Loader.class.getResourceAsStream(libraryPath)) {
+            try (final InputStream input = Loader.class.getClassLoader().getResourceAsStream(libraryPath)) {
                 if (input == null) {
                     throw new LinkageError("Missing native library at " + libraryPath + " for platform " + platform.classifier);
                 }
