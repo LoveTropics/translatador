@@ -117,7 +117,5 @@ jobs:
       - name: Upload artifacts to release
         uses: AButler/upload-release-assets@v3.0
         with:
-          files: |
-            bindings/java/build/libs/
-            bindings/java/bin/
+          files: "bindings/java/build/libs/*;bindings/java/bin/*"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
