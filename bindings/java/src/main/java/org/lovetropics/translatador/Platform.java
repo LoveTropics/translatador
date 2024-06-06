@@ -43,7 +43,7 @@ enum Platform {
     }
 
     public String getLibraryPath(final String name) {
-        return "/" + os.libraryPrefix + name + "-" + classifier + os.libraryExtension;
+        return os.libraryPrefix + name + "-" + classifier + os.libraryExtension;
     }
 
     public enum Os {
