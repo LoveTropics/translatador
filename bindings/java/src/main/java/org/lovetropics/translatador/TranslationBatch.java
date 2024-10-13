@@ -20,7 +20,7 @@ public abstract class TranslationBatch implements AutoCloseable {
      * @param strings plain strings
      * @return a new batch
      */
-    static TranslationBatch of(final String... strings) {
+    public static TranslationBatch of(final String... strings) {
         return new TranslationBatch() {
             @Override
             public String[] get() {
@@ -39,7 +39,7 @@ public abstract class TranslationBatch implements AutoCloseable {
      * @param strings plain strings
      * @return a new batch
      */
-    static TranslationBatch of(final List<String> strings) {
+    public static TranslationBatch of(final List<String> strings) {
         return of(strings.toArray(String[]::new));
     }
 
@@ -49,7 +49,7 @@ public abstract class TranslationBatch implements AutoCloseable {
      * @param batch the batch to copy
      * @return a plain copy of the given batch
      */
-    static TranslationBatch plainCopyOf(final TranslationBatch batch) {
+    public static TranslationBatch plainCopyOf(final TranslationBatch batch) {
         return of(batch.get());
     }
 
