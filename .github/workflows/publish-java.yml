@@ -99,7 +99,7 @@ jobs:
       - name: Download natives
         uses: actions/download-artifact@v4
         with:
-          pattern: dist-*
+          pattern: natives-*
           merge-multiple: true
           path: bindings/java/bin/
 
