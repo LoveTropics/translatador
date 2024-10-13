@@ -36,14 +36,12 @@ publishing {
             if (env.FULL_PUBLISH) {
                 NativeBuildPlatform.values().each { final platform ->
                     final def nativeFile = nativeArtifact(platform.classifier)
-                    if (nativeFile.exists()) {
-                        artifact(nativeFile) {
-                            classifier = "native-$platform.classifier"
-                        }
+                    artifact(nativeFile) {
+                        classifier = "native-$platform.classifier"
                     }
                 }
             } else {
-                artifact project(':native').tasks.named("jar")
+                artifact project(':native').tasks.named('jar')
             }
         }
     }
