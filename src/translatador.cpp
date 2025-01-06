@@ -9,7 +9,9 @@
 #include <translator/logging.h>
 #include <translator/text_processor.h>
 #include <variant>
+#ifdef USE_WHATLANG
 #include <whatlang.h>
+#endif
 #ifdef __unix__
 #include <csignal>
 #endif
@@ -402,6 +404,7 @@ TrlError trl_translate(const TrlModel* model, const TrlString* const* source, co
 }
 
 TrlError trl_detect_language(const char* string, TrlDetectedLangInfo* result) {
+#ifdef USE_WHATLANG
     WlInfo info;
     switch (wl_detect(string, &info)) {
         case WL_MALFORMED_STRING:
@@ -415,4 +418,8 @@ TrlError trl_detect_language(const char* string, TrlDetectedLangInfo* result) {
             result->confidence = info.confidence;
             return TRL_OK;
     }
+#else
+    last_error = std::string("Language detection is disabled for this build");
+    return TRL_ERROR;
+#endif
 }

@@ -2,6 +2,8 @@
 
 project("translatador")
 
+option(USE_WHATLANG "Compile with language detection support via whatlang-rs" ON)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -30,10 +32,16 @@ add_subdirectory(extern)
 
 set_target_properties(bergamot-translator PROPERTIES GIT_SUBMODULE OFF)
 
+if (USE_WHATLANG)
+    add_definitions(-DUSE_WHATLANG=1)
+endif ()
+
 add_library(translatador STATIC "src/translatador.cpp")
 target_include_directories(translatador PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_link_libraries(translatador PRIVATE bergamot-translator)
-target_link_libraries(translatador PRIVATE whatlang)
+if (USE_WHATLANG)
+    target_link_libraries(translatador PRIVATE whatlang)
+endif ()
 
 add_subdirectory(bindings)
 add_subdirectory(examples)
