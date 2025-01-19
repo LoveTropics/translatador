@@ -1,5 +1,4 @@
-use std::ffi::CStr;
-use libc::c_char;
+use std::ffi::{c_char, CStr};
 
 #[repr(C)]
 pub struct WlInfo {
