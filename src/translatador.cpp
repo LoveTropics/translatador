@@ -1,22 +1,21 @@
 ﻿#include <translatador.h>
+#include "tokenization.h"
 
-#include <marian.h>
 #include <common/options.h>
 #include <data/types.h>
-#include <translator/annotation.h>
+#include <marian.h>
+#include <memory>
+#include <mutex>
+#include <string>
 #include <translator/beam_search.h>
-#include <translator/definitions.h>
-#include <translator/logging.h>
-#include <translator/text_processor.h>
-#include <variant>
+#include <utility>
+#include <vector>
 #ifdef USE_WHATLANG
 #include <whatlang.h>
 #endif
 #ifdef __unix__
 #include <csignal>
 #endif
-
-namespace bergamot = marian::bergamot;
 
 static std::mutex init_mutex;
 static bool initialized;
@@ -27,8 +26,8 @@ static void initialize() {
     std::lock_guard guard(init_mutex);
     if (!initialized) {
 #ifdef __unix__
-        // Capture and restore signal handlers that are otherwise overidden by Marian
-        // This is particularly important when running inside of the JVM, which uses these handlers in normal operation
+        // Capture and restore signal handlers that are otherwise overridden by Marian
+        // This is particularly important when running inside the JVM, which uses these handlers in normal operation
         struct sigaction sigsegv = {};
         struct sigaction sigfpe = {};
         sigaction(SIGSEGV, nullptr, &sigsegv);
@@ -46,7 +45,30 @@ static void initialize() {
     }
 }
 
-struct Buffer {
+struct OwnedBuffer {
+    char* data;
+    const size_t size;
+
+    OwnedBuffer(const OwnedBuffer&) = delete;
+
+    OwnedBuffer& operator=(const OwnedBuffer&) = delete;
+
+    ~OwnedBuffer() {
+        if (data) {
+#ifdef _WIN32
+            _aligned_free(data);
+#else
+            std::free(data);
+#endif
+        }
+    }
+
+    explicit operator bool() const {
+        return data && size > 0;
+    }
+};
+
+struct BufferRef {
     const char* data;
     const size_t size;
 
@@ -54,79 +76,75 @@ struct Buffer {
         return data && size > 0;
     }
 
-    bool operator!=(const Buffer& buffer) const {
+    bool operator!=(const BufferRef& buffer) const {
         return data != buffer.data || size != buffer.size;
     }
 
-    [[nodiscard]] bergamot::AlignedMemory aligned_copy(const size_t alignment) const {
+    [[nodiscard]] OwnedBuffer aligned_copy(const size_t alignment) const {
         if (data && size > 0) {
-            bergamot::AlignedMemory result(size, alignment);
-            std::memcpy(result.begin(), data, size);
-            return result;
+            const size_t aligned_size = (size + alignment - 1) / alignment * alignment;
+#ifdef _WIN32
+            void* new_data = _aligned_malloc(aligned_size, alignment);
+#else
+            void* new_data = std::aligned_alloc(alignment, aligned_size);
+#endif
+            std::memcpy(new_data, data, size);
+            return OwnedBuffer{static_cast<char *>(new_data), size};
         }
         return {};
     }
 };
 
-struct Batch {
-    std::vector<bergamot::AnnotatedText> sources;
-    std::vector<size_t> sentence_counts;
+struct Vocabs {
+    std::shared_ptr<marian::Vocab> source;
+    std::shared_ptr<marian::Vocab> target;
 
-    std::vector<marian::Words> sentences;
-    std::vector<size_t> sentence_ids;
-
-    size_t sentence_id;
-    size_t max_length;
-
-    explicit Batch(const size_t expectedCount): sentence_id(0), max_length(0) {
-        sources.reserve(expectedCount);
-        sentence_counts.reserve(expectedCount);
-        sentences.reserve(expectedCount * 2);
-        sentence_ids.reserve(expectedCount * 2);
+    explicit Vocabs(
+        const std::shared_ptr<marian::Options>& options,
+        const BufferRef buffer
+    ): source(load_vocab(options, buffer)),
+       target(source) {
     }
 
-    void push(bergamot::Segments&& segments, bergamot::AnnotatedText&& source) {
-        sources.push_back(std::move(source));
-        sentence_counts.push_back(segments.size());
+    explicit Vocabs(
+        const std::shared_ptr<marian::Options>& options,
+        const BufferRef source_buffer,
+        const BufferRef target_buffer
+    ): source(load_vocab(options, source_buffer)),
+       target(load_vocab(options, target_buffer)) {
+    }
 
-        for (bergamot::Segment& sentence : segments) {
-            if (sentence.size() > max_length) {
-                max_length = sentence.size();
-            }
-            sentences.push_back(std::move(sentence));
-            sentence_ids.push_back(sentence_id++);
-        }
+    static std::shared_ptr<marian::Vocab> load_vocab(const std::shared_ptr<marian::Options>& options, const BufferRef buffer) {
+        const OwnedBuffer aligned_buffer = buffer.aligned_copy(64);
+        std::shared_ptr<marian::Vocab> vocab = std::make_shared<marian::Vocab>(options, 0);
+        vocab->loadFromSerialized(marian::string_view(aligned_buffer.data, aligned_buffer.size));
+        return vocab;
     }
 };
 
 struct ModelData {
-    std::shared_ptr<marian::Options> options;
-    bergamot::AlignedMemory model_memory;
+    const std::shared_ptr<marian::Options> options;
+    const OwnedBuffer model_memory;
     // short_list_generator holds a raw reference to this memory
-    bergamot::AlignedMemory short_list_memory;
-    bergamot::Vocabs vocabs;
-    bergamot::TextProcessor text_processor;
+    const OwnedBuffer short_list_memory;
+    const Vocabs vocabs;
+    const size_t max_segment_length;
+    const SsplitMode segment_split_mode;
     std::shared_ptr<marian::data::BinaryShortlistGenerator> short_list_generator;
 
-    [[nodiscard]] bergamot::Vocabs create_vocabs(const Buffer source_vocab, const Buffer target_vocab) const {
-        static constexpr size_t ALIGNMENT = 64;
+    [[nodiscard]] Vocabs create_vocabs(const BufferRef source_vocab, const BufferRef target_vocab) const {
         if (source_vocab != target_vocab && target_vocab) {
-            return bergamot::Vocabs(options, {
-                std::make_shared<bergamot::AlignedMemory>(source_vocab.aligned_copy(ALIGNMENT)),
-                std::make_shared<bergamot::AlignedMemory>(target_vocab.aligned_copy(ALIGNMENT))
-            });
-        } else {
-            std::shared_ptr<bergamot::AlignedMemory> vocab_memory = std::make_shared<bergamot::AlignedMemory>(source_vocab.aligned_copy(ALIGNMENT));
-            return bergamot::Vocabs(options, {vocab_memory, vocab_memory});
+            return Vocabs(options, source_vocab, target_vocab);
         }
+        return Vocabs(options, source_vocab);
     }
 
-    std::shared_ptr<marian::data::BinaryShortlistGenerator> create_short_list_generator() {
-        if (short_list_memory.begin() && short_list_memory.size() > 0) {
-            bool shared = vocabs.sources().front() == vocabs.target();
+    [[nodiscard]] std::shared_ptr<marian::data::BinaryShortlistGenerator> create_short_list_generator() const {
+        if (short_list_memory) {
+            bool shared = vocabs.source == vocabs.target;
             return std::make_shared<marian::data::BinaryShortlistGenerator>(
-                short_list_memory.begin(), short_list_memory.size(),
-                vocabs.sources().front(), vocabs.target(),
+                short_list_memory.data, short_list_memory.size,
+                vocabs.source, vocabs.target,
                 0, 1, shared, false
             );
         }
@@ -135,15 +153,16 @@ struct ModelData {
 
     ModelData(
         std::shared_ptr<marian::Options> options,
-        const Buffer model,
-        const Buffer source_vocab,
-        const Buffer target_vocab,
-        const Buffer short_list
+        const BufferRef model,
+        const BufferRef source_vocab,
+        const BufferRef target_vocab,
+        const BufferRef short_list
     ): options(std::move(options)),
        model_memory(model.aligned_copy(256)),
        short_list_memory(short_list.aligned_copy(64)),
        vocabs(create_vocabs(source_vocab, target_vocab)),
-       text_processor(bergamot::TextProcessor(this->options, this->vocabs, bergamot::AlignedMemory())),
+       max_segment_length(this->options->get<size_t>("max-length-break")),
+       segment_split_mode(parse_ssplit_mode(this->options->get<std::string>("ssplit-mode"))),
        short_list_generator(create_short_list_generator()) {
     }
 
@@ -156,7 +175,7 @@ struct ModelData {
     ModelData& operator=(const ModelData&&) = delete;
 
     ~ModelData() {
-        // Ensure that short_list_generator cannot outlive this struct: short_list_generator holds a raw reference to short_list_memory, but we need to pass it as a shared_ptr to Bergamot
+        // Ensure that short_list_generator cannot outlive this struct: short_list_generator holds a raw reference to short_list_memory, but we need to pass it as a shared_ptr to Marian
         if (short_list_generator) {
             short_list_generator.reset();
         }
@@ -164,20 +183,37 @@ struct ModelData {
 };
 
 struct TrlString {
-    std::variant<std::string, bergamot::AnnotatedText> plain_or_annotated;
+    const std::shared_ptr<std::string> plain;
 
-    [[nodiscard]] const std::string& as_plain() const {
-        if (std::holds_alternative<bergamot::AnnotatedText>(plain_or_annotated)) {
-            return std::get<bergamot::AnnotatedText>(plain_or_annotated).text;
+    mutable std::mutex tokenized_mutex;
+    mutable std::optional<std::shared_ptr<TokenizedString>> tokenized;
+
+    explicit TrlString(std::string&& plain): plain(std::make_shared<std::string>(plain)) {
+    }
+
+    explicit TrlString(std::shared_ptr<TokenizedString>&& tokenized): plain(tokenized->plain),
+                                                                      tokenized(std::optional(std::move(tokenized))) {
+    }
+
+    [[nodiscard]] std::shared_ptr<TokenizedString> get_tokenized(
+        const std::shared_ptr<marian::Vocab const>& vocab,
+        const size_t max_segment_length,
+        const SsplitMode split_mode
+    ) const {
+        std::lock_guard guard(tokenized_mutex);
+        TokenizationParameters parameters{vocab, max_segment_length, split_mode};
+        if (!tokenized.has_value() || tokenized.value()->parameters != parameters) {
+            // Could be wasteful if only vocabulary changed and not splitting mode - but this should be rare
+            tokenized.emplace(tokenize(plain, std::move(parameters)));
         }
-        return std::get<std::string>(plain_or_annotated);
+        return tokenized.value();
     }
 };
 
 struct TrlModel {
-    std::shared_ptr<ModelData> data;
-    std::shared_ptr<marian::ExpressionGraph> graph;
-    std::vector<std::shared_ptr<marian::Scorer>> scorers;
+    const std::shared_ptr<ModelData> data;
+    const std::shared_ptr<marian::ExpressionGraph> graph;
+    const std::vector<std::shared_ptr<marian::Scorer>> scorers;
 
     TrlModel(
         std::shared_ptr<ModelData> data,
@@ -193,7 +229,7 @@ struct TrlModel {
     TrlModel& operator=(const TrlModel&) = delete;
 
     template<typename F>
-    void evaluate(const Batch&& batch, F handler) const;
+    void evaluate(const std::vector<std::shared_ptr<TokenizedString>>&& batch, F handler) const;
 };
 
 char* trl_get_last_error() {
@@ -264,7 +300,7 @@ static TrlModel instantiate_model(const std::shared_ptr<ModelData>& data) {
     graph->getBackend()->configureDevice(data->options);
     graph->reserveWorkspaceMB(data->options->get<size_t>("workspace"));
 
-    std::vector<std::shared_ptr<marian::Scorer>> scorers = marian::createScorers(data->options, std::vector<const void *>{data->model_memory.begin()});
+    std::vector<std::shared_ptr<marian::Scorer>> scorers = marian::createScorers(data->options, std::vector<const void *>{data->model_memory.data});
     for (const std::shared_ptr<marian::Scorer>& scorer : scorers) {
         scorer->init(graph);
         if (data->short_list_generator) {
@@ -283,10 +319,10 @@ const TrlModel* trl_create_model(const char* yaml_config, const char* model, con
         std::shared_ptr<marian::Options> options = parse_options(yaml_config);
         const std::shared_ptr<ModelData> data = std::make_shared<ModelData>(
             options,
-            Buffer{model, model_size},
-            Buffer{source_vocab, source_vocab_size},
-            Buffer{target_vocab, target_vocab_size},
-            Buffer{short_list, short_list_size}
+            BufferRef{model, model_size},
+            BufferRef{source_vocab, source_vocab_size},
+            BufferRef{target_vocab, target_vocab_size},
+            BufferRef{short_list, short_list_size}
         );
         return new TrlModel(instantiate_model(data));
     });
@@ -302,104 +338,50 @@ void trl_destroy_model(const TrlModel* model) {
 }
 
 const TrlString* trl_create_string(const char* utf) {
-    return new TrlString{std::string(utf)};
+    return new TrlString(std::string(utf));
 }
 
 const char* trl_get_string_utf(const TrlString* string) {
-    return string->as_plain().c_str();
+    return string->plain->c_str();
 }
 
 void trl_destroy_string(const TrlString* string) {
     delete string;
 }
 
-static bergamot::AnnotatedText decode_sentences(const bergamot::AnnotatedText& source, const std::shared_ptr<marian::Vocab const>& vocab, const std::shared_ptr<marian::History>* histories, const size_t sentence_count) {
-    bergamot::AnnotatedText target;
-    target.text.reserve(source.text.size());
-
-    for (int i = 0; i < sentence_count; i++) {
-        const std::shared_ptr<marian::History>& history = histories[i];
-
-        const marian::NBestList results = history->nBest(1);
-        const marian::Words& words = std::get<0>(results[0]);
-
-        std::string decoded;
-        std::vector<marian::string_view> mappings;
-        vocab->decodeWithByteRanges(words, decoded, mappings, false);
-        target.appendSentence(source.gap(i), mappings.begin(), mappings.end());
-
-        if (i + 1 == sentence_count) {
-            target.appendEndingWhitespace(source.gap(i + 1));
-        }
-    }
-
-    return target;
-}
-
 template<typename F>
-void TrlModel::evaluate(const Batch&& batch, const F handler) const {
-    size_t batch_size = batch.sentences.size();
+void TrlModel::evaluate(const std::vector<std::shared_ptr<TokenizedString>>&& batch, const F handler) const {
+    const std::shared_ptr<marian::data::CorpusBatch> corpus_batch = generate_corpus_batch(batch, data->vocabs.source);
 
-    const std::shared_ptr<marian::data::SubBatch> sub_batch = std::make_shared<marian::data::SubBatch>(batch_size, batch.max_length, data->vocabs.sources().at(0));
-
-    size_t word_count = 0;
-    for (size_t i = 0; i < batch_size; i++) {
-        const marian::Words sentence = batch.sentences[i];
-        for (size_t j = 0; j < sentence.size(); j++) {
-            sub_batch->data()[j * batch_size + i] = sentence[j];
-            sub_batch->mask()[j * batch_size + i] = 1.0f;
-            word_count++;
-        }
-    }
-
-    sub_batch->setWords(word_count);
-
-    const std::shared_ptr<marian::data::CorpusBatch> corpus_batch = std::make_shared<marian::data::CorpusBatch>(std::vector{sub_batch});
-    corpus_batch->setSentenceIds(batch.sentence_ids);
-
-    const std::shared_ptr<marian::Vocab const> target_vocab = data->vocabs.target();
+    const std::shared_ptr<marian::Vocab const> target_vocab = data->vocabs.target;
     marian::BeamSearch search(data->options, scorers, target_vocab);
     const marian::Histories histories = search.search(graph, corpus_batch);
 
-    size_t sentence_id = 0;
-    for (int i = 0; i < batch.sources.size(); i++) {
-        const bergamot::AnnotatedText source = batch.sources[i];
-        const size_t sentence_count = batch.sentence_counts[i];
-
-        bergamot::AnnotatedText target = decode_sentences(source, target_vocab, &histories[sentence_id], sentence_count);
-        sentence_id += sentence_count;
+    size_t segment_id = 0;
+    for (size_t i = 0; i < batch.size(); i++) {
+        const std::shared_ptr<TokenizedString>& source = batch[i];
+        std::shared_ptr<TokenizedString> target = decode_string(source, target_vocab, &histories[segment_id]);
+        segment_id += source->segments.size();
 
         handler(i, std::move(target));
     }
 }
 
 TrlError trl_translate(const TrlModel* model, const TrlString* const* source, const TrlString** target, const size_t count) {
-    std::vector builder(count, bergamot::AnnotatedText());
+    return run_fallible([model, source, target, count] {
+        const std::shared_ptr<const marian::Vocab> source_vocab = model->data->vocabs.source;
+        const size_t max_segment_length = model->data->max_segment_length;
+        const SsplitMode segment_split_mode = model->data->segment_split_mode;
 
-    return run_fallible([&builder, model, source, target, count] {
-        Batch batch(count);
-
-        // TODO: Split batches based on mini-batch-words (see BatchingPool)
+        std::vector<std::shared_ptr<TokenizedString>> batch;
+        batch.reserve(count);
         for (size_t i = 0; i < count; i++) {
-            const TrlString* string = source[i];
-            bergamot::Segments segments;
-            bergamot::AnnotatedText annotated;
-            if (std::holds_alternative<bergamot::AnnotatedText>(string->plain_or_annotated)) {
-                annotated = std::get<bergamot::AnnotatedText>(string->plain_or_annotated);
-                model->data->text_processor.processFromAnnotation(annotated, segments);
-            } else {
-                model->data->text_processor.process(std::string(string->as_plain()), annotated, segments);
-            }
-            batch.push(std::move(segments), std::move(annotated));
+            batch.push_back(source[i]->get_tokenized(source_vocab, max_segment_length, segment_split_mode));
         }
 
-        model->evaluate(std::move(batch), [&builder](const int i, bergamot::AnnotatedText&& string) {
-            builder[i] = bergamot::AnnotatedText(string);
+        model->evaluate(std::move(batch), [&target](const int i, std::shared_ptr<TokenizedString>&& string) {
+            target[i] = new TrlString(std::move(string));
         });
-
-        for (int i = 0; i < count; i++) {
-            target[i] = new TrlString{std::move(builder[i])};
-        }
     });
 }
 

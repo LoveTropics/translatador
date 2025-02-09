@@ -195,7 +195,7 @@ char* trl_get_last_error();
  *
  * \link trl_destroy_model should be used once the model is no longer needed.
  *
- * \param yaml_config optional Bergamot YAML configuration to be used to load this model, or null to use defaults (<https://github.com/mozilla/firefox-translations-models/blob/main/evals/translators/bergamot.config.yml>)
+ * \param yaml_config optional Marian YAML configuration to be used to load this model, or null to use defaults (<https://github.com/mozilla/firefox-translations-models/blob/main/evals/translators/bergamot.config.yml>)
  * \param model model binary to load
  * \param model_size size of the model binary
  * \param source_vocab vocabulary of the source language to load

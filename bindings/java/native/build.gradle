@@ -44,8 +44,11 @@ tasks.withType(Jar).configureEach {
     include '*.dll', '*.dylib', '*.so'
     rename "(.+)\\.(.+)", "\$1-${platform.classifier}\\.\$2"
 
-    from(rootLibDir.resolve("extern/bergamot-translator/LICENSE")) {
-        rename { "${it}_bergamot-translator" }
+    from(rootLibDir.resolve("extern/marian-dev/LICENSE.md")) {
+        rename { "${it}_marian" }
+    }
+    from(rootLibDir.resolve("extern/ssplit-cpp/LICENSE.md")) {
+        rename { "${it}_ssplit" }
     }
     from rootLibDir.resolve("extern/whatlang-ffi/LICENSE_whatlang")
     include 'LICENSE*'

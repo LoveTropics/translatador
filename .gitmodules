@@ -1,3 +1,6 @@
-[submodule "extern/bergamot-translator"]
-	path = extern/bergamot-translator
-	url = ../../Gegy/bergamot-translator.git
+[submodule "extern/ssplit-cpp"]
+	path = extern/ssplit-cpp
+	url = git@github.com:Gegy/ssplit-cpp.git
+[submodule "extern/marian-dev"]
+	path = extern/marian-dev
+	url = git@github.com:browsermt/marian-dev.git

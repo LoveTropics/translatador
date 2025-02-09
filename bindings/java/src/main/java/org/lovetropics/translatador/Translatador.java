@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.concurrent.locks.StampedLock;
 
 /**
- * Translatador is a minimal wrapper around <a href="https://browser.mt/">Bergamot Translator</a>, which allows
+ * Translatador is a minimal wrapper around <a href="https://marian-nmt.github.io/">Marian</a>, which allows
  * lightweight client-side translation of text.
  * <p>
  * Mozilla provides open source translation models for use in Firefox that can be found <a href="https://github.com/mozilla/firefox-translations-models">here</a>,
@@ -52,7 +52,7 @@ public class Translatador {
         private byte[] shortList;
 
         /**
-         * Sets the optional Bergamot YAML configuration to be used to load this model with.
+         * Sets the optional Marian YAML configuration to be used to load this model with.
          * <p>
          * By default, uses the <a href="https://github.com/mozilla/firefox-translations-models/blob/main/evals/translators/bergamot.config.yml">default parameters used by firefox-translations-models</a>.
          *
