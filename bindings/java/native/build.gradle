@@ -21,6 +21,8 @@ tasks.register('configureNativeBuild', Exec) {
     inputs.file 'CMakeLists.txt'
     outputs.dir cmakeBuildDir
 
+    // Marian's dependencies are very stale, but we really shouldn't be relying on this
+    environment 'CMAKE_POLICY_VERSION_MINIMUM', '3.5'
     commandLine 'cmake', rootLibDir, "-DCMAKE_BUILD_TYPE=$buildType"
 }
 
@@ -32,6 +34,7 @@ tasks.register('buildNatives', Exec) {
     inputs.dir 'src'
     outputs.dir new File(cmakeBuildDir, "bindings/java/native/lib/")
 
+    environment 'CMAKE_POLICY_VERSION_MINIMUM', '3.5'
     commandLine 'cmake', '--build', '.', '--config', buildType, '-j3', '--target', target
 }
 

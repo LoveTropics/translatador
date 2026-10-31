@@ -26,6 +26,8 @@ endif ()
 
 # Ensure that the project can be embedded in a shared library (e.g. for bindings)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+# These dependencies are very stale, this is terrible, we should fix it
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 add_subdirectory(extern)
 
